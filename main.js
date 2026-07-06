@@ -3161,9 +3161,22 @@ function renderCoachesSection() {
     .join('');
 }
 
-// Coach comparison board: ranks every coach by total money collected from his
-// players (same commission base as the percentage payout) alongside how many
-// players are currently assigned to him. Bars are relative to the top coach.
+// Unique player ids that belong to a coach's OWN groups (groups whose trainer
+// is this coach). A player counts once even if he's in several of the coach's
+// groups. This is the basis for the comparison board below.
+function groupMemberIdsForCoach(coachName) {
+  const name = (coachName || '').trim();
+  const ids = new Set();
+  (data.groups || []).forEach(g => {
+    if ((g.trainer || '').trim() === name) (g.memberIds || []).forEach(id => ids.add(id));
+  });
+  return ids;
+}
+
+// Coach comparison board: ranks every coach by the players inside HIS OWN groups
+// and the money collected from exactly those players. Both numbers come only
+// from the coach's groups (g.trainer === coach) — not from every player who
+// happens to carry his name. Bars are relative to the top coach.
 function renderCoachComparison(coaches) {
   const box = document.getElementById('coach-compare');
   if (!box) return;
@@ -3172,12 +3185,15 @@ function renderCoachComparison(coaches) {
     return;
   }
   const rows = coaches
-    .map(c => ({
-      name: c.name,
-      branch: c.branch,
-      collected: collectedForCoach(c.name),
-      players: (data.trainees || []).filter(t => (t.trainer || '').trim() === c.name).length,
-    }))
+    .map(c => {
+      const memberIds = groupMemberIdsForCoach(c.name);
+      const players = (data.trainees || []).filter(t => memberIds.has(t.id)).length;
+      const collected = Math.max(
+        0,
+        Math.round((data.payments || []).reduce((s, p) => (memberIds.has(p.id) ? s + num(p.amount) : s), 0)),
+      );
+      return { name: c.name, branch: c.branch, collected, players };
+    })
     .sort((a, b) => b.collected - a.collected || b.players - a.players);
   const maxMoney = Math.max(1, ...rows.map(r => r.collected));
   const maxPlayers = Math.max(1, ...rows.map(r => r.players));
